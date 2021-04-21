@@ -12,6 +12,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
+import itertools
 import unittest
 
 from absl.testing import absltest
@@ -31,7 +32,7 @@ config.parse_flags_with_absl()
 FLAGS = config.FLAGS
 
 
-def rand_sparse(rng, nnz=0.1, post=lambda x: x):
+def rand_sparse(rng, nnz=0.5, post=lambda x: x):
   def _rand_sparse(shape, dtype, nnz=nnz):
     rand = jtu.rand_default(rng)
     size = np.prod(shape)
@@ -229,6 +230,78 @@ class cuSparseTest(jtu.JaxTestCase):
     args = fromdense(M, nnz=nnz, index_dtype=jnp.int32)
     M_out = todense(*args, shape=M.shape)
     self.assertArraysEqual(M, M_out)
+
+
+class SparseObjectTest(jtu.JaxTestCase):
+  @parameterized.named_parameters(
+    {"testcase_name": "_{}".format(Obj.__name__), "Obj": Obj}
+    for Obj in [sparse_ops.CSR, sparse_ops.CSC, sparse_ops.COO])
+  def test_attrs(self, Obj, shape=(5, 8), dtype=np.float16):
+    rng = rand_sparse(self.rng(), post=Obj.fromdense)
+    M = rng(shape, dtype)
+
+    assert isinstance(M, Obj)
+    assert M.shape == shape
+    assert M.dtype == dtype
+    assert M.nnz == (M.todense() != 0).sum()
+    assert M.data.dtype == dtype
+
+    if isinstance(M, sparse_ops.CSR):
+      assert len(M.data) == len(M.indices)
+      assert len(M.indptr) == M.shape[0] + 1
+    elif isinstance(M, sparse_ops.CSC):
+      assert len(M.data) == len(M.indices)
+      assert len(M.indptr) == M.shape[1] + 1
+    elif isinstance(M, sparse_ops.COO):
+      assert len(M.data) == len(M.row) == len(M.col)
+    else:
+      raise ValueError("Obj={Obj} not expected.")
+
+  @parameterized.named_parameters(itertools.chain.from_iterable(
+    jtu.cases_from_list(
+      {"testcase_name": "_{}_Obj={}".format(
+        jtu.format_shape_dtype_string(shape, dtype), Obj.__name__),
+       "shape": shape, "dtype": dtype, "Obj": Obj}
+      for shape in [(5, 8), (8, 5), (5, 5), (8, 8)]
+      for dtype in jtu.dtypes.floating + jtu.dtypes.complex)
+    for Obj in [sparse_ops.CSR, sparse_ops.CSC, sparse_ops.COO]))
+  def test_dense_round_trip(self, shape, dtype, Obj):
+    rng = rand_sparse(self.rng())
+    M = rng(shape, dtype)
+    Msparse = Obj.fromdense(M)
+    self.assertArraysEqual(M, Msparse.todense())
+
+  @parameterized.named_parameters(itertools.chain.from_iterable(
+    jtu.cases_from_list(
+      {"testcase_name": "_{}_Obj={}".format(
+        jtu.format_shape_dtype_string(shape, dtype), Obj.__name__),
+       "shape": shape, "dtype": dtype, "Obj": Obj}
+      for shape in [(5, 8), (8, 5), (5, 5), (8, 8)]
+      for dtype in jtu.dtypes.floating + jtu.dtypes.complex)
+    for Obj in [sparse_ops.CSR, sparse_ops.CSC, sparse_ops.COO]))
+  def test_transpose(self, shape, dtype, Obj):
+    rng = rand_sparse(self.rng())
+    M = rng(shape, dtype)
+    Msparse = Obj.fromdense(M)
+    self.assertArraysEqual(M.T, Msparse.T.todense())
+
+  @parameterized.named_parameters(itertools.chain.from_iterable(
+    jtu.cases_from_list(
+      {"testcase_name": "_{}_Obj={}_bshape={}".format(
+        jtu.format_shape_dtype_string(shape, dtype), Obj.__name__, bshape),
+       "shape": shape, "dtype": dtype, "Obj": Obj, "bshape": bshape}
+      for shape in [(5, 8), (8, 5), (5, 5), (8, 8)]
+      for bshape in [(), (5,), (10,)]
+      for dtype in jtu.dtypes.floating + jtu.dtypes.complex)
+    for Obj in [sparse_ops.CSR, sparse_ops.CSC, sparse_ops.COO]))
+  def test_matmul(self, shape, dtype, Obj, bshape):
+    rng = rand_sparse(self.rng(), post=jnp.array)
+    rng_b = jtu.rand_default(self.rng())
+    M = rng(shape, dtype)
+    Msp = Obj.fromdense(M)
+    x = rng_b(shape[-1:] + bshape, dtype)
+    x = jnp.asarray(x)
+    self.assertAllClose(M @ x, Msp @ x)
 
 
 if __name__ == "__main__":
