@@ -25,6 +25,7 @@ from jax import jit
 from jax import test_util as jtu
 from jax import xla
 import jax.numpy as jnp
+from jax import jvp
 
 import numpy as np
 from scipy import sparse
@@ -149,6 +150,19 @@ class cuSparseTest(jtu.JaxTestCase):
     self.assertArraysEqual(M.toarray(), todense(*args))
     self.assertArraysEqual(M.toarray(), jit(todense)(*args))
 
+    
+    todense = lambda data: sparse_ops.coo_todense(data, M.row, M.col, shape=M.shape)
+    tangent = jnp.ones_like(M.data)
+    y, dy = jvp(todense, (M.data, ), (tangent, ))
+    self.assertArraysEqual(M.toarray(), y)
+    self.assertArraysEqual(todense(tangent), dy)
+
+    y, dy = jit(lambda prim, tan: jvp(todense, prim, tan))((M.data, ), (tangent, ))
+    self.assertArraysEqual(M.toarray(), y)
+    self.assertArraysEqual(todense(tangent), dy)
+
+
+    
   @parameterized.named_parameters(jtu.cases_from_list(
       {"testcase_name": "_{}".format(jtu.format_shape_dtype_string(shape, dtype)),
        "shape": shape, "dtype": dtype}
