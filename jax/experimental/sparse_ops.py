@@ -299,6 +299,14 @@ if cusparse and cusparse.is_supported:
   xla.backend_specific_translations['gpu'][
       coo_todense_p] = _coo_todense_gpu_translation_rule
 
+def _coo_todense_jvp_rule(primals_in, tangents_in, **params):
+  vals, rows, cols,  = primals_in
+  mat_dot, _, _  = tangents_in
+  primals_out = coo_todense(vals, rows, cols, **params)
+  tangents_out = ad.Zero if type(mat_dot) is ad.Zero else coo_todense(mat_dot, rows, cols, **params)
+  return primals_out, tangents_out
+ad.primitive_jvps[coo_todense_p] = _coo_todense_jvp_rule
+
 #--------------------------------------------------------------------
 # coo_fromdense
 
@@ -352,6 +360,14 @@ if cusparse and cusparse.is_supported:
   xla.backend_specific_translations['gpu'][
       coo_fromdense_p] = _coo_fromdense_gpu_translation_rule
 
+def _coo_fromdense_jvp_rule(primals_in, tangents_in, **params):
+  mat,  = primals_in
+  mat_dot, = tangents_in
+  primals_out = coo_fromdense(mat, **params)
+  tangents_out = ad.Zero if type(mat_dot) is ad.Zero else coo_fromdense(mat_dot, **params)
+  return primals_out, tangents_out
+ad.primitive_jvps[coo_fromdense_p] = _coo_fromdense_jvp_rule
+ 
 #--------------------------------------------------------------------
 # coo_matvec
 
