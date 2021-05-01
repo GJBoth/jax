@@ -45,7 +45,8 @@ from jax.lib import xla_bridge
 from jax.lib import xla_client
 import jax.numpy as jnp
 import numpy as np
-
+from jax.interpreters import ad
+from jax import lax
 xb = xla_bridge
 xops = xla_client.ops
 
@@ -453,6 +454,21 @@ xla.translations[coo_matmat_p] = xla.lower_fun(
 if cusparse and cusparse.is_supported:
   xla.backend_specific_translations['gpu'][
       coo_matmat_p] = _coo_matmat_gpu_translation_rule
+
+def _coo_matmat_jvp_rule(primals_in, tangents_in, **params):
+  vals, rows, cols, mat = primals_in
+  sparse_mat_dot, _, _, mat_dot = tangents_in
+
+  primals_out = coo_matmat(vals, rows, cols, mat, **params)
+
+  if type(sparse_mat_dot) is ad.Zero and type(mat_dot) is ad.Zero:
+    tangents_out = ad.Zero
+  else:
+    tangents_out = coo_matmat(sparse_mat_dot, rows, cols, mat, **params) if type(sparse_mat_dot) is not ad.Zero else lax.zeros_like_array(vals)
+    tangents_out += coo_matmat(vals, rows, cols, mat_dot, **params) if type(mat_dot) is not ad.Zero else lax.zeros_like_array(mat)
+  return primals_out, tangents_out
+ad.primitive_jvps[coo_matmat_p] = _coo_matmat_jvp_rule
+
 
 #----------------------------------------------------------------------
 # Sparse objects (APIs subject to change)
