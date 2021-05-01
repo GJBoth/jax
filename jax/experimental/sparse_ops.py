@@ -404,6 +404,22 @@ if cusparse and cusparse.is_supported:
   xla.backend_specific_translations['gpu'][
       coo_matvec_p] = _coo_matvec_gpu_translation_rule
 
+def _coo_matvec_jvp_rule(primals_in, tangents_in, **params):
+  vals, rows, cols, vec = primals_in
+  sparse_mat_dot, _, _, vec_dot = tangents_in
+
+  primals_out = coo_matvec(vals, rows, cols, vec, **params)
+
+  if type(sparse_mat_dot) is ad.Zero and type(vec_dot) is ad.Zero:
+    tangents_out = ad.Zero
+  elif type(sparse_mat_dot) is not ad.Zero and type(vec_dot) is ad.Zero:
+    tangents_out = coo_matmat(sparse_mat_dot, rows, cols, vec, **params)
+  elif type(sparse_mat_dot) is  ad.Zero and type(vec_dot) is not ad.Zero:
+    tangents_out = coo_matmat(vals, rows, cols, vec_dot, **params)
+  else:
+    tangents_out = coo_matmat(sparse_mat_dot, rows, cols, vec, **params) + coo_matmat(vals, rows, cols, vec_dot, **params)
+  return primals_out, tangents_out
+ad.primitive_jvps[coo_matvec_p] = _coo_matvec_jvp_rule
 #--------------------------------------------------------------------
 # coo_matmat
 
