@@ -463,9 +463,12 @@ def _coo_matmat_jvp_rule(primals_in, tangents_in, **params):
 
   if type(sparse_mat_dot) is ad.Zero and type(mat_dot) is ad.Zero:
     tangents_out = ad.Zero
+  elif type(sparse_mat_dot) is not ad.Zero and type(mat_dot) is ad.Zero:
+    tangents_out = coo_matmat(sparse_mat_dot, rows, cols, mat, **params)
+  elif type(sparse_mat_dot) is  ad.Zero and type(mat_dot) is not ad.Zero:
+    tangents_out = coo_matmat(vals, rows, cols, mat_dot, **params)
   else:
-    tangents_out = coo_matmat(sparse_mat_dot, rows, cols, mat, **params) if type(sparse_mat_dot) is not ad.Zero else lax.zeros_like_array(vals)
-    tangents_out += coo_matmat(vals, rows, cols, mat_dot, **params) if type(mat_dot) is not ad.Zero else lax.zeros_like_array(mat)
+    tangents_out = coo_matmat(sparse_mat_dot, rows, cols, mat, **params) + coo_matmat(vals, rows, cols, mat_dot, **params)
   return primals_out, tangents_out
 ad.primitive_jvps[coo_matmat_p] = _coo_matmat_jvp_rule
 
