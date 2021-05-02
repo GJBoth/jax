@@ -46,7 +46,7 @@ from jax.lib import xla_client
 import jax.numpy as jnp
 import numpy as np
 from jax.interpreters import ad
-from jax import lax
+from jax import ad_util
 xb = xla_bridge
 xops = xla_client.ops
 
@@ -303,7 +303,7 @@ def _coo_todense_jvp_rule(primals_in, tangents_in, **params):
   vals, rows, cols,  = primals_in
   mat_dot, _, _  = tangents_in
   primals_out = coo_todense(vals, rows, cols, **params)
-  tangents_out = ad.Zero if type(mat_dot) is ad.Zero else coo_todense(mat_dot, rows, cols, **params)
+  tangents_out = ad_util.Zero.from_value(primals_out) if type(mat_dot) is ad_util.Zero else coo_todense(mat_dot, rows, cols, **params)
   return primals_out, tangents_out
 ad.primitive_jvps[coo_todense_p] = _coo_todense_jvp_rule
 
@@ -363,9 +363,9 @@ if cusparse and cusparse.is_supported:
 def _coo_fromdense_jvp_rule(primals_in, tangents_in, **params):
   mat,  = primals_in
   mat_dot, = tangents_in
-  primals_out = coo_fromdense(mat, **params)
-  tangents_out = ad.Zero if type(mat_dot) is ad.Zero else coo_fromdense(mat_dot, **params)
-  return primals_out, tangents_out
+  data, row, col = coo_fromdense(mat, **params)
+  tangents_out = ad_util.Zero.from_value(data) if type(mat_dot) is ad_util.Zero else coo_fromdense(mat_dot, **params)[0]
+  return (data, row, col), (tangents_out, ad_util.Zero.from_value(row), ad_util.Zero.from_value(col))
 ad.primitive_jvps[coo_fromdense_p] = _coo_fromdense_jvp_rule
  
 #--------------------------------------------------------------------
@@ -425,15 +425,16 @@ def _coo_matvec_jvp_rule(primals_in, tangents_in, **params):
   sparse_mat_dot, _, _, vec_dot = tangents_in
 
   primals_out = coo_matvec(vals, rows, cols, vec, **params)
+  is_zero = lambda x: type(x) is ad_util.Zero
 
-  if type(sparse_mat_dot) is ad.Zero and type(vec_dot) is ad.Zero:
-    tangents_out = ad.Zero
-  elif type(sparse_mat_dot) is not ad.Zero and type(vec_dot) is ad.Zero:
-    tangents_out = coo_matmat(sparse_mat_dot, rows, cols, vec, **params)
-  elif type(sparse_mat_dot) is  ad.Zero and type(vec_dot) is not ad.Zero:
-    tangents_out = coo_matmat(vals, rows, cols, vec_dot, **params)
+  if is_zero(sparse_mat_dot) and is_zero(vec_dot):
+    tangents_out = ad_util.Zero.from_value(primals_out)
+  elif not is_zero(sparse_mat_dot) and is_zero(vec_dot):
+    tangents_out = coo_matvec(sparse_mat_dot, rows, cols, vec, **params)
+  elif is_zero(sparse_mat_dot) and not is_zero(vec_dot):
+    tangents_out = coo_matvec(vals, rows, cols, vec_dot, **params)
   else:
-    tangents_out = coo_matmat(sparse_mat_dot, rows, cols, vec, **params) + coo_matmat(vals, rows, cols, vec_dot, **params)
+    tangents_out = coo_matvec(sparse_mat_dot, rows, cols, vec, **params) + coo_matvec(vals, rows, cols, vec_dot, **params)
   return primals_out, tangents_out
 ad.primitive_jvps[coo_matvec_p] = _coo_matvec_jvp_rule
 #--------------------------------------------------------------------
@@ -492,12 +493,13 @@ def _coo_matmat_jvp_rule(primals_in, tangents_in, **params):
   sparse_mat_dot, _, _, mat_dot = tangents_in
 
   primals_out = coo_matmat(vals, rows, cols, mat, **params)
+  is_zero = lambda x: type(x) is ad_util.Zero
 
-  if type(sparse_mat_dot) is ad.Zero and type(mat_dot) is ad.Zero:
-    tangents_out = ad.Zero
-  elif type(sparse_mat_dot) is not ad.Zero and type(mat_dot) is ad.Zero:
+  if is_zero(sparse_mat_dot) and is_zero(mat_dot):
+    tangents_out = ad_util.Zero.from_value(primals_out)
+  elif not is_zero(sparse_mat_dot) and is_zero(mat_dot):
     tangents_out = coo_matmat(sparse_mat_dot, rows, cols, mat, **params)
-  elif type(sparse_mat_dot) is  ad.Zero and type(mat_dot) is not ad.Zero:
+  elif is_zero(sparse_mat_dot) and not is_zero(mat_dot):
     tangents_out = coo_matmat(vals, rows, cols, mat_dot, **params)
   else:
     tangents_out = coo_matmat(sparse_mat_dot, rows, cols, mat, **params) + coo_matmat(vals, rows, cols, mat_dot, **params)
