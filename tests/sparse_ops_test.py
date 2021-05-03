@@ -17,7 +17,7 @@ import unittest
 
 from absl.testing import absltest
 from absl.testing import parameterized
-from jax import config
+from jax import ad_util, config
 from jax.experimental import sparse_ops
 from jax.lib import cusparse
 from jax.lib import xla_bridge
@@ -26,10 +26,9 @@ from jax import test_util as jtu
 from jax import xla
 import jax.numpy as jnp
 from jax import jvp
-
 import numpy as np
 from scipy import sparse
-
+from jax import ad_util
 config.parse_flags_with_absl()
 FLAGS = config.FLAGS
 
@@ -161,8 +160,6 @@ class cuSparseTest(jtu.JaxTestCase):
     self.assertArraysEqual(M.toarray(), y)
     self.assertArraysEqual(todense(tangent), dy)
 
-
-    
   @parameterized.named_parameters(jtu.cases_from_list(
       {"testcase_name": "_{}".format(jtu.format_shape_dtype_string(shape, dtype)),
        "shape": shape, "dtype": dtype}
@@ -187,6 +184,13 @@ class cuSparseTest(jtu.JaxTestCase):
     self.assertArraysEqual(row, M_coo.row.astype(index_dtype))
     self.assertArraysEqual(col, M_coo.col.astype(index_dtype))
 
+    tangent = jnp.ones_like(M)
+    (data, row, col), (data_dot, row_dot, col_dot) = jvp(fromdense, (M, ), (tangent, ))
+    self.assertArraysEqual(data, M_coo.data.astype(dtype))
+    self.assertArraysEqual(row, M_coo.row.astype(index_dtype))
+    self.assertArraysEqual(col, M_coo.col.astype(index_dtype))
+    self.assertArraysEqual(data_dot, fromdense(tangent)[0])
+
   @parameterized.named_parameters(jtu.cases_from_list(
       {"testcase_name": "_{}_T={}".format(jtu.format_shape_dtype_string(shape, dtype), transpose),
        "shape": shape, "dtype": dtype, "transpose": transpose}
@@ -207,6 +211,12 @@ class cuSparseTest(jtu.JaxTestCase):
     self.assertAllClose(op(M) @ v, matvec(*args), rtol=MATMUL_TOL)
     self.assertAllClose(op(M) @ v, jit(matvec)(*args), rtol=MATMUL_TOL)
 
+    y, dy = jvp(lambda x: sparse_ops.coo_matvec(M.data, M.row, M.col, x, shape=shape, transpose=transpose).sum(), (v, ), (jnp.ones_like(v), ))
+    self.assertAllClose((op(M) @ v).sum(), y, rtol=MATMUL_TOL)
+    
+    y, dy = jvp(lambda x: sparse_ops.coo_matvec(x, M.row, M.col, v, shape=shape, transpose=transpose).sum(), (M.data, ), (jnp.ones_like(M.data), ))
+    self.assertAllClose((op(M) @ v).sum(), y, rtol=MATMUL_TOL)
+  @unittest.skipIf(jtu.device_under_test() != "gpu", "test requires GPU")
   @parameterized.named_parameters(jtu.cases_from_list(
       {"testcase_name": "_{}_T={}".format(jtu.format_shape_dtype_string(shape, dtype), transpose),
        "shape": shape, "dtype": dtype, "transpose": transpose}
@@ -227,6 +237,14 @@ class cuSparseTest(jtu.JaxTestCase):
     self.assertAllClose(op(M) @ B, matmat(*args), rtol=MATMUL_TOL)
     self.assertAllClose(op(M) @ B, jit(matmat)(*args), rtol=MATMUL_TOL)
 
+    y, dy = jvp(lambda x: sparse_ops.coo_matmat(M.data, M.row, M.col, x, shape=shape, transpose=transpose).sum(), (B, ), (jnp.ones_like(B), ))
+    self.assertAllClose((op(M) @ B).sum(), y, rtol=MATMUL_TOL)
+    # next line doesnt work cause M is a scipy.
+    #dy_check = jvp(lambda x: (op(M) @ x).sum(), (B, ), (jnp.ones_like(B), ))[1]
+    #self.assertAllClose(dy_check, dy, rtol=MATMUL_TOL)
+
+    y, dy = jvp(lambda x: sparse_ops.coo_matmat(x, M.row, M.col, B, shape=shape, transpose=transpose).sum(), (M.data, ), (jnp.ones_like(M.data), ))
+    self.assertAllClose((op(M) @ B).sum(), y, rtol=MATMUL_TOL)
   @unittest.skipIf(jtu.device_under_test() != "gpu", "test requires GPU")
   def test_gpu_translation_rule(self):
     version = xla_bridge.get_backend().platform_version
