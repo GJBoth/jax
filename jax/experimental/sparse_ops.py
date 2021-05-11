@@ -39,6 +39,7 @@ from jax import api
 from jax import core
 from jax import jit
 from jax import tree_util
+from jax import lax
 from jax.interpreters import xla
 from jax.lib import cusparse
 from jax.lib import xla_bridge
@@ -49,7 +50,6 @@ from jax.interpreters import ad
 from jax import ad_util
 xb = xla_bridge
 xops = xla_client.ops
-
 Dtype = Any
 
 #--------------------------------------------------------------------
@@ -498,18 +498,14 @@ def _coo_matmat_jvp_rule(primals_in, tangents_in, **params):
   sparse_mat_dot, rows_dot, cols_dot, mat_dot  = tangents_in  
   assert type(rows_dot) is ad_util.Zero
   assert type(cols_dot) is ad_util.Zero
-  
-  primals_out = coo_matmat(vals, rows, cols, mat, **params)
-  is_zero = lambda x: type(x) is ad_util.Zero
 
-  if is_zero(sparse_mat_dot) and is_zero(mat_dot):
-    tangents_out = ad_util.Zero.from_value(primals_out)
-  elif not is_zero(sparse_mat_dot) and is_zero(mat_dot):
-    tangents_out = coo_matmat(sparse_mat_dot, rows, cols, mat, **params)
-  elif is_zero(sparse_mat_dot) and not is_zero(mat_dot):
-    tangents_out = coo_matmat(vals, rows, cols, mat_dot, **params)
-  else:
-    tangents_out = coo_matmat(sparse_mat_dot, rows, cols, mat, **params) + coo_matmat(vals, rows, cols, mat_dot, **params)
+  primals_out = coo_matmat(vals, rows, cols, mat, **params)
+  _zero = lambda p, t: lax.zeros_like_array(p) if isinstance(t, ad_util.Zero) else t
+  
+  _sparse_mat_dot = _zero(vals, sparse_mat_dot)
+  _mat_dot = _zero(mat, mat_dot)
+
+  tangents_out = coo_matmat(_sparse_mat_dot, rows, cols, mat, **params) + coo_matmat(vals, rows, cols, _mat_dot, **params)
   return primals_out, tangents_out
 ad.primitive_jvps[coo_matmat_p] = _coo_matmat_jvp_rule
 
