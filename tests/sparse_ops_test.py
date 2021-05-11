@@ -17,7 +17,7 @@ import unittest
 
 from absl.testing import absltest
 from absl.testing import parameterized
-from jax import ad_util, config
+from jax import config
 from jax.experimental import sparse_ops
 from jax.lib import cusparse
 from jax.lib import xla_bridge
@@ -28,7 +28,6 @@ import jax.numpy as jnp
 from jax import jvp
 import numpy as np
 from scipy import sparse
-from jax import ad_util
 config.parse_flags_with_absl()
 FLAGS = config.FLAGS
 
@@ -149,7 +148,6 @@ class cuSparseTest(jtu.JaxTestCase):
     self.assertArraysEqual(M.toarray(), todense(*args))
     self.assertArraysEqual(M.toarray(), jit(todense)(*args))
 
-    
     todense = lambda data: sparse_ops.coo_todense(data, M.row, M.col, shape=M.shape)
     tangent = jnp.ones_like(M.data)
     y, dy = jvp(todense, (M.data, ), (tangent, ))
@@ -213,7 +211,7 @@ class cuSparseTest(jtu.JaxTestCase):
 
     y, dy = jvp(lambda x: sparse_ops.coo_matvec(M.data, M.row, M.col, x, shape=shape, transpose=transpose).sum(), (v, ), (jnp.ones_like(v), ))
     self.assertAllClose((op(M) @ v).sum(), y, rtol=MATMUL_TOL)
-    
+
     y, dy = jvp(lambda x: sparse_ops.coo_matvec(x, M.row, M.col, v, shape=shape, transpose=transpose).sum(), (M.data, ), (jnp.ones_like(M.data), ))
     self.assertAllClose((op(M) @ v).sum(), y, rtol=MATMUL_TOL)
   @unittest.skipIf(jtu.device_under_test() != "gpu", "test requires GPU")
@@ -239,9 +237,6 @@ class cuSparseTest(jtu.JaxTestCase):
 
     y, dy = jvp(lambda x: sparse_ops.coo_matmat(M.data, M.row, M.col, x, shape=shape, transpose=transpose).sum(), (B, ), (jnp.ones_like(B), ))
     self.assertAllClose((op(M) @ B).sum(), y, rtol=MATMUL_TOL)
-    # next line doesnt work cause M is a scipy.
-    #dy_check = jvp(lambda x: (op(M) @ x).sum(), (B, ), (jnp.ones_like(B), ))[1]
-    #self.assertAllClose(dy_check, dy, rtol=MATMUL_TOL)
 
     y, dy = jvp(lambda x: sparse_ops.coo_matmat(x, M.row, M.col, B, shape=shape, transpose=transpose).sum(), (M.data, ), (jnp.ones_like(M.data), ))
     self.assertAllClose((op(M) @ B).sum(), y, rtol=MATMUL_TOL)

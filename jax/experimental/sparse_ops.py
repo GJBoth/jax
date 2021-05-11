@@ -301,10 +301,10 @@ if cusparse and cusparse.is_supported:
 
 def _coo_todense_jvp_rule(primals_in, tangents_in, **params):
   vals, rows, cols,  = primals_in
-  mat_dot, rows_dot, cols_dot  = tangents_in  
+  mat_dot, rows_dot, cols_dot = tangents_in
   assert type(rows_dot) is ad_util.Zero
   assert type(cols_dot) is ad_util.Zero
-  
+
   primals_out = coo_todense(vals, rows, cols, **params)
   tangents_out = ad_util.Zero.from_value(primals_out) if type(mat_dot) is ad_util.Zero else coo_todense(mat_dot, rows, cols, **params)
   return primals_out, tangents_out
@@ -370,7 +370,7 @@ def _coo_fromdense_jvp_rule(primals_in, tangents_in, **params):
   tangents_out = ad_util.Zero.from_value(data) if type(mat_dot) is ad_util.Zero else coo_fromdense(mat_dot, **params)[0]
   return (data, row, col), (tangents_out, ad_util.Zero.from_value(row), ad_util.Zero.from_value(col))
 ad.primitive_jvps[coo_fromdense_p] = _coo_fromdense_jvp_rule
- 
+
 #--------------------------------------------------------------------
 # coo_matvec
 
@@ -425,13 +425,13 @@ if cusparse and cusparse.is_supported:
 
 def _coo_matvec_jvp_rule(primals_in, tangents_in, **params):
   vals, rows, cols, vec = primals_in
-  sparse_mat_dot, rows_dot, cols_dot, vec_dot  = tangents_in  
+  sparse_mat_dot, rows_dot, cols_dot, vec_dot = tangents_in
   assert type(rows_dot) is ad_util.Zero
   assert type(cols_dot) is ad_util.Zero
-  
+
   primals_out = coo_matvec(vals, rows, cols, vec, **params)
   _zero = lambda p, t: lax.zeros_like_array(p) if isinstance(t, ad_util.Zero) else t
-  
+
   _sparse_mat_dot = _zero(vals, sparse_mat_dot)
   _vec_dot = _zero(vec, vec_dot)
 
@@ -491,13 +491,13 @@ if cusparse and cusparse.is_supported:
 
 def _coo_matmat_jvp_rule(primals_in, tangents_in, **params):
   vals, rows, cols, mat = primals_in
-  sparse_mat_dot, rows_dot, cols_dot, mat_dot  = tangents_in  
+  sparse_mat_dot, rows_dot, cols_dot, mat_dot = tangents_in
   assert type(rows_dot) is ad_util.Zero
   assert type(cols_dot) is ad_util.Zero
 
   primals_out = coo_matmat(vals, rows, cols, mat, **params)
   _zero = lambda p, t: lax.zeros_like_array(p) if isinstance(t, ad_util.Zero) else t
-  
+
   _sparse_mat_dot = _zero(vals, sparse_mat_dot)
   _mat_dot = _zero(mat, mat_dot)
 
