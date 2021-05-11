@@ -495,8 +495,10 @@ if cusparse and cusparse.is_supported:
 
 def _coo_matmat_jvp_rule(primals_in, tangents_in, **params):
   vals, rows, cols, mat = primals_in
-  sparse_mat_dot, _, _, mat_dot = tangents_in
-
+  sparse_mat_dot, rows_dot, cols_dot, mat_dot  = tangents_in  
+  assert type(rows_dot) is ad_util.Zero
+  assert type(cols_dot) is ad_util.Zero
+  
   primals_out = coo_matmat(vals, rows, cols, mat, **params)
   is_zero = lambda x: type(x) is ad_util.Zero
 
