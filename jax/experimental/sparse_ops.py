@@ -301,7 +301,10 @@ if cusparse and cusparse.is_supported:
 
 def _coo_todense_jvp_rule(primals_in, tangents_in, **params):
   vals, rows, cols,  = primals_in
-  mat_dot, _, _  = tangents_in
+  mat_dot, rows_dot, cols_dot  = tangents_in
+  assert type(rows_dot) is ad_util.Zero, "Row index tangent should be zero."
+  assert type(cols_dot) is ad_util.Zero, "Column index tangent should be zero.":
+  
   primals_out = coo_todense(vals, rows, cols, **params)
   tangents_out = ad_util.Zero.from_value(primals_out) if type(mat_dot) is ad_util.Zero else coo_todense(mat_dot, rows, cols, **params)
   return primals_out, tangents_out
