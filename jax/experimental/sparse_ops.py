@@ -430,16 +430,12 @@ def _coo_matvec_jvp_rule(primals_in, tangents_in, **params):
   assert type(cols_dot) is ad_util.Zero
   
   primals_out = coo_matvec(vals, rows, cols, vec, **params)
-  is_zero = lambda x: type(x) is ad_util.Zero
+  _zero = lambda p, t: lax.zeros_like_array(p) if isinstance(t, ad_util.Zero) else t
+  
+  _sparse_mat_dot = _zero(vals, sparse_mat_dot)
+  _vec_dot = _zero(vec, vec_dot)
 
-  if is_zero(sparse_mat_dot) and is_zero(vec_dot):
-    tangents_out = ad_util.Zero.from_value(primals_out)
-  elif not is_zero(sparse_mat_dot) and is_zero(vec_dot):
-    tangents_out = coo_matvec(sparse_mat_dot, rows, cols, vec, **params)
-  elif is_zero(sparse_mat_dot) and not is_zero(vec_dot):
-    tangents_out = coo_matvec(vals, rows, cols, vec_dot, **params)
-  else:
-    tangents_out = coo_matvec(sparse_mat_dot, rows, cols, vec, **params) + coo_matvec(vals, rows, cols, vec_dot, **params)
+  tangents_out = coo_matvec(_sparse_mat_dot, rows, cols, vec, **params) + coo_matvec(vals, rows, cols, _vec_dot, **params)
   return primals_out, tangents_out
 ad.primitive_jvps[coo_matvec_p] = _coo_matvec_jvp_rule
 #--------------------------------------------------------------------
