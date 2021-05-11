@@ -25,7 +25,7 @@ from jax import jit
 from jax import test_util as jtu
 from jax import xla
 import jax.numpy as jnp
-from jax import jvp
+from jax import jvp, vjp
 import numpy as np
 from scipy import sparse
 config.parse_flags_with_absl()
@@ -209,8 +209,15 @@ class cuSparseTest(jtu.JaxTestCase):
     self.assertAllClose(op(M) @ v, matvec(*args), rtol=MATMUL_TOL)
     self.assertAllClose(op(M) @ v, jit(matvec)(*args), rtol=MATMUL_TOL)
 
-    y, dy = jvp(lambda x: sparse_ops.coo_matvec(M.data, M.row, M.col, x, shape=shape, transpose=transpose).sum(), (v, ), (jnp.ones_like(v), ))
-    self.assertAllClose((op(M) @ v).sum(), y, rtol=MATMUL_TOL)
+    f = lambda x: sparse_ops.coo_matvec(M.data, M.row, M.col, x, shape=M.shape, transpose=transpose).sum()
+    y_jvp, dy_jvp = jvp(f, (v, ), (jnp.ones_like(v), ))
+    y_vjp, vjp_fn = vjp(f, v)
+    dy_vjp = vjp_fn(jnp.ones_like(y_vjp))[0].sum()
+
+    self.assertAllClose((op(M) @ v).sum(), y_jvp, rtol=MATMUL_TOL)
+    self.assertAllClose((op(M) @ v).sum(), y_vjp, rtol=MATMUL_TOL)
+    self.assertAllClose(y_jvp, y_vjp, rtol=MATMUL_TOL)
+    self.assertAllClose(dy_jvp, dy_vjp, rtol=MATMUL_TOL)
 
     y, dy = jvp(lambda x: sparse_ops.coo_matvec(x, M.row, M.col, v, shape=shape, transpose=transpose).sum(), (M.data, ), (jnp.ones_like(M.data), ))
     self.assertAllClose((op(M) @ v).sum(), y, rtol=MATMUL_TOL)
