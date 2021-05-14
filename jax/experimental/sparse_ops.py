@@ -439,18 +439,6 @@ def _coo_matvec_jvp_rule(primals_in, tangents_in, **params):
   return primals_out, tangents_out
 ad.primitive_jvps[coo_matvec_p] = _coo_matvec_jvp_rule
 
-def _coo_matvec_transpose_rule(ct, vals, rows, cols, vec, **params):
-  _zero = lambda p, t: lax.zeros_like_array(p) if isinstance(t, ad_util.Zero) else t
-  if not ad.is_undefined_primal(vals):
-    assert ad.is_undefined_primal(vec) 
-    ct_vec = ad_util.Zero(vec.aval) if type(ct) is ad.Zero else coo_matvec(vals, rows, cols, ct, **params)
-    res = [None, lax.zeros_like_array(rows), lax.zeros_like_array(cols), ct_vec]
-  else:
-    assert ad.is_undefined_primal(vals)
-    ct_vec = ad_util.Zero(vals.aval) if type(ct) is ad.Zero else coo_matvec(ct, rows, cols, vec, **params)
-    res = [ct_vec, lax.zeros_like_array(rows), lax.zeros_like_array(cols), None]
-  return res
-ad.primitive_transposes[coo_matvec_p] = _coo_matvec_transpose_rule
 #--------------------------------------------------------------------
 # coo_matmat
 
