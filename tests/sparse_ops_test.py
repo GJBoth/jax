@@ -25,7 +25,7 @@ from jax import jit
 from jax import test_util as jtu
 from jax import xla
 import jax.numpy as jnp
-from jax import jvp, vjp
+from jax import jvp
 import numpy as np
 from scipy import sparse
 config.parse_flags_with_absl()
